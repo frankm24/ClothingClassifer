@@ -24,34 +24,59 @@ Above link is why I had to write it this way.
 
 class Draw:
     left_button = "up"
+    draw_strength = 1
+    draw_channel = 255 * draw_strength 
     tiles = []
     x_pos = None
     y_pos = None
-    
+
     def left_button_down(self, event=None):
         self.left_button = "down"
         if self.left_button == "down":
             tile = event.widget.winfo_containing(event.x_root, event.y_root)
-            if type(tile) == tk.Frame:
-                tk.Frame.configure(tile, bg = "white")
+            if type(tile) == tk.Frame and tile in self.tiles:
+                #index = tiles.index(tile)
+                tk.Frame.configure(tile, bg = "#ffffff")  #ededed
+                
         
     def left_button_up(self, event=None):
         self.left_button = "up"
 
     def b1motion(self, event=None):
         tile = event.widget.winfo_containing(event.x_root, event.y_root)
-        if type(tile) == tk.Frame:
-            tk.Frame.configure(tile, bg = "white")
-             
+        if type(tile) == tk.Frame and tile in self.tiles:
+            tk.Frame.configure(tile, bg = "#ffffff")
+            
+    def clearDrawing(self, event=None):
+        for tile in self.tiles:
+            tk.Frame.configure(tile, bg = "black")
+    
     def clickExitButton(self):
         exit()
         
     def __init__(self, root):
+        #Titles and buttons
+        top_frame = tk.Frame(root, bg = "black")
+        drawing_frame = tk.Frame(root, bg = "black", cursor = "pencil", highlightbackground = "white", highlightthickness = 2)
+        bottom_frame = tk.Frame(root, bg = "black")
+        
+        title = tk.Label(top_frame, text = "Hand Written Digits Nueral Network", fg = "white",
+                    bg = "black", font = (None, 30))
+        info = tk.Label(top_frame, text = "Draw a digit and the nueral network will guess what it is!",
+                        fg = "white", bg = "black")
+        
+        info.pack(side = "bottom")
+        title.pack(side = "top")
+        
+        clear_button = tk.Frame(bottom_frame, bg = "black", cursor = "hand2")
+        clear_button_label = tk.Label(clear_button, text = "Clear", bg = "white")
+        clear_button.pack(pady = 5)
+        clear_button_label.pack(side = "bottom")
+        
         #Make grid of tiles
         for r in range(28):
             for c in range(28):
-                 tile = tk.Frame(root, bd = '5', bg = "black", width = 20, height = 20
-                   )
+                 tile = tk.Frame(drawing_frame, bd = '5', bg = "black", width = 20, height = 20)
                  tile.grid(row=r,column=c)
                  self.tiles.insert(len(self.tiles), tile)
             #tile.bind("<Enter>", lambda event, arg=tile: self.onMbEnter(arg, event))
@@ -59,8 +84,15 @@ class Draw:
         root.bind("<ButtonPress-1>", self.left_button_down)
         root.bind("<ButtonRelease-1>", self.left_button_up)
         root.bind("<B1-Motion>", self.b1motion)
-  
+        clear_button_label.bind("<ButtonPress-1>", self.clearDrawing)
+        
+        top_frame.pack(side = "top", fill = "x")
+        drawing_frame.pack()
+        bottom_frame.pack(side = "bottom")
+        
 root = tk.Tk()
+root.title("Hand Written Digit NN")
+root.configure(bg = "black")
 
 data = MNIST("TrainingData")
 images, labels = data.load_training()
