@@ -61,15 +61,22 @@ class Network:
         weights[2] = np.random.rand(10, 16) #10 output nuerons, 16 weights each
         biases[2] = np.random.rand(10, 1) #10 output nuerons, one bias each
     
-    def feedforward(self, layer):
+    def feedforward(self, layer, softmax):
         #Why not double check? lol
         assert(len(layer) == 784)
         #for each set of weights and biases
         for b, w in zip(self.biases, self.weights):
             #calculate the next layer matrix based on the previous layer * weights + biases
             #starting with the input layer (same variable)
-            layer = relu(np.dot(w, layer) + b)
-        return layer
+            layer = np.dot(w, layer) + b
+            if w = self.weights[len(self.weights)-1)]:
+                break
+            else:
+                layer = relu(layer)
+        if softmax == true:
+            return softmax(layer)
+        else:
+            return layer
 
 class Draw:
     network = Network()
