@@ -69,7 +69,7 @@ class Network:
             #calculate the next layer matrix based on the previous layer * weights + biases
             #starting with the input layer (same variable)
             layer = np.dot(w, layer) + b
-            if w = self.weights[len(self.weights)-1)]:
+            if w == self.weights[len(self.weights)-1]:
                 break
             else:
                 layer = relu(layer)
