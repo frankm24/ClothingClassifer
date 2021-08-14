@@ -1,14 +1,21 @@
-import PySimpleGUI as sg
 import numpy as np
 import random
 from mnist import MNIST
 import tkinter as tk
 
 '''
+A program containing a vanilla multilayer perceptron network which reads a user inputted image
+and guesses which digit the user was drawing.
+
+The way in which I programmed this is probably very bad. My understanding of Python and the APIs which
+I used is very limited. To an experienced programmer, I'd imagine the code doesn't look great.
+But the goal of this project was not to become a perfect programmer.
+The goal of this project was to program a basic nueral net from the ground up so that when I use
+machine learning APIs such as TensorFlow and PyTorch, I understand what the computer is actually doing
+from a mathematical standpoint.
+
 Libraries used:
 
-PySimpleGUI -- old library, stopped using because it is too abstract/not enough features to make the
-project.
 Tkinter -- basic UI designing library.
 Numpy -- has np arrays, matrix multply functions, and other stuff I may want for math
 Random -- used to generate random numbers
@@ -23,7 +30,49 @@ on the 28x28 grid format that the network will accept.
 This code is not perfect but it works.
 '''
 
+#Used to normalize brightness values for inputting, NOT an activation function or anything like that
+def normalize(number, minNumber, maxNumber):
+    return (number - minNumber) / (maxNumber - minNumber)
+
+#Rectified Linear Unit, a simple activation function
+def relu(array):
+    for x in array:
+        x = 0 if x <= 0 else x
+    return array
+
+#The softmax function turns the array of output values into a probability matrix (sum of outputs = 1.0)
+def softmax(array):
+    numerator = np.exp(array)
+    denominator = np.sum(numerator)
+    return numerator / denominator
+
+class Network:
+    def __init__(self):
+        #initialize weights and biases as random
+        weights = [None for i in range(3)]
+        biases = [None for i in range(3)]
+        #Three sets of weights and biases
+        weights[0] = np.random.rand(16, 784) #16 hidden layer 1 nuerons, 784 weights each
+        biases[0] = np.random.rand(16, 1) #16 hidden layer 1 nuerons, one bias each
+        
+        weights[1] = np.random.rand(16, 16) #16 hidden layer 2 nuerons, 16 weights each
+        biases[1] = np.random.rand(16, 1) #16 hidden layer 2 nuerons, one bias each
+
+        weights[2] = np.random.rand(10, 16) #10 output nuerons, 16 weights each
+        biases[2] = np.random.rand(10, 1) #10 output nuerons, one bias each
+    
+    def feedforward(self, layer):
+        #Why not double check? lol
+        assert(len(layer) == 784)
+        #for each set of weights and biases
+        for b, w in zip(self.biases, self.weights):
+            #calculate the next layer matrix based on the previous layer * weights + biases
+            #starting with the input layer (same variable)
+            layer = relu(np.dot(w, layer) + b)
+        return layer
+
 class Draw:
+    network = Network()
     left_button = "up"
     status = "idle"
     draw_color = "#ffffff"
@@ -85,24 +134,22 @@ class Draw:
         for r in range(28):
             for c in range(28):
                 tile = self.tiles[r][c]
-                #Convert hex to brightness value used by the network
+                #Convert hex to brightness value used by the MNIST set (0-255) and then normalize (0-1)
                 #https://stackoverflow.com/questions/29643352/converting-hex-to-rgb-value-in-python
                 brightness = int(tile["bg"].lstrip('#')[:2], 16)
-                self.input_drawing.insert(len(self.input_drawing), brightness)
+                normalized_brightness = normalize(brightness, 0, 255)
+                self.input_drawing.insert(len(self.input_drawing), normalized_brightness)
         print(self.input_drawing)
         #Make sure the data is not messed up somehow
         assert(len(self.input_drawing) == 784)
 
         #feed forward
         
+        
         #Reset
         self.input_drawing.clear()
         self.enter_button_label.configure(text = "Enter")
-
                 
-                
-                            
-        
     def __init__(self, root):
         #Title and top text
         top_frame = tk.Frame(root, bg = "#000000")
