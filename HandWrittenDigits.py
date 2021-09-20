@@ -20,7 +20,7 @@ Libraries used:
 Tkinter -- basic UI designing library.
 Numpy -- has np arrays, matrix multply functions, and other stuff I may want for math
 Random -- used to generate random numbers
-MNIST -- Pure python library which interprets the weird file formats of the training data from the MNIST database
+MNIST -- Library which interprets the weird file formats of the training data from the MNIST database
 MatPlotLib -- maybe I will use to graph cost function overtime as it backprops
 
 Using grid of tkinter Frames instead of Canvas for drawing UI because I can make the individual frames
@@ -51,17 +51,17 @@ def softmax(array):
 class Network:
     def __init__(self):
         #Not sure why I did this but I think it errored if I didn't? 
-        weights = [None for i in range(3)]
-        biases = [None for i in range(3)]
+        self.weights = [None for i in range(3)]
+        self.biases = [None for i in range(3)]
         #initialize weights and biases as random, three sets of weights and biases
-        weights[0] = np.random.rand(16, 784) #16 hidden layer 1 nuerons, 784 weights each
-        biases[0] = np.random.rand(16, 1) #16 hidden layer 1 nuerons, one bias each
+        self.weights[0] = np.random.rand(16, 784) #16 hidden layer 1 nuerons, 784 weights each
+        self.biases[0] = np.random.rand(16, 1) #16 hidden layer 1 nuerons, one bias each
         
-        weights[1] = np.random.rand(16, 16) #16 hidden layer 2 nuerons, 16 weights each
-        biases[1] = np.random.rand(16, 1) #16 hidden layer 2 nuerons, one bias each
+        self.weights[1] = np.random.rand(16, 16) #16 hidden layer 2 nuerons, 16 weights each
+        self.biases[1] = np.random.rand(16, 1) #16 hidden layer 2 nuerons, one bias each
 
-        weights[2] = np.random.rand(10, 16) #10 output nuerons, 16 weights each
-        biases[2] = np.random.rand(10, 1) #10 output nuerons, one bias each
+        self.weights[2] = np.random.rand(10, 16) #10 output nuerons, 16 weights each
+        self.biases[2] = np.random.rand(10, 1) #10 output nuerons, one bias each
     #Compute cost of an output layer
     #After doing some googling, I realized that this method, which 3B1B explained in his video,
     #is the Sum Square Error, and is only one of the ways that loss/cost is computed.
@@ -82,12 +82,15 @@ class Network:
         assert(len(input_layer) == 784)
         
         layers = []
-        layers[0] = np.array(input_layer)
+        layers.insert(0, np.array(input_layer))
         #Note that list[-1] == last item in list
         #for each set of weights and biases
         for b, w in zip(self.biases, self.weights):
-            #calculate the next layer matrix based on the previous layer * weights + biases
-            layers[len(layers)] = np.add(np.dot(layers[-1], w), b)
+            print(w)
+            print(layers[-1])
+            print(b)
+            #calculate the next layer matrix based on the previous layer * weights + biase            
+            layers.insert(len(layers), np.add(np.dot(w, layers[-1]), b) )
             #If last layer, break loop, else, ReLU activate and continue
             if w == self.weights[-1]:
                 break
@@ -96,7 +99,8 @@ class Network:
         #Once out of loop, if softmax output is desired, softmax, else, return unchanged outputs
         if softmax == true:
             layers[-1] = softmax(layers[-1])
-        return layers
+        return layers, self.weights, self.biases
+    
     #train using backpropogation algorithm
     def train(self, dataset):
         cost_over_time = []
@@ -109,39 +113,72 @@ class Network:
         dataset = [dataset[i:i + batch_size] for i in range(0, len(dataset), batch_size)]
         print(dataset)
         
-        #find derivative of estimated cost function (only from batch, not all data) with respect to
+        #find d of estimated cost function (only from batch, not all data) with respect to
         #each weight and bias. This shows how much each weight and each bias should be changed to
         #move in the negative gradient direction and minimize cost.
         gradient_vector = []
+        
         #for each batch
         for batch in dataset:
             #for each case in batch
             for label, image in batch:
+                print(label, image[0][0])
                 #Get network nueron values when fed the training example
-                result = feedforward(image, True)
+                layers, weights, biases = feedforward(image, True)
                 #compute cost value
                 C = cost(label, result[-1])
                 
-                for layer in reversed(result):
-                    #
+                #for layer in reversed(result):
+                    
                 #The following is just notes for stuff I need to compute.
-                #I do NOT know how to find these derivatives but I watched the 3Blue1Brwon video on
+                #I do NOT know how to find these ds but I watched the 3Blue1Brwon video on
                 #the chain rule in nueral networks and backpropogation calculus so I think I can
                 #get it working at some point.
-                #Compute derivative of cost function with respect to weights
-                derivativeOfReLU = 0 if activation == 0 else 1
-                derivative_C = previousActivation * derivativeOfReLU *
-                (2 * activation - desired_activation)
-                #Compute derivative of cost function with respect to biases   
 
+                #Also need d of activation with respect to brightness using the softmax,
+                #because a softmax is applied to output as opposed to a ReLU at the final layer,
+                #and the activation function is always needed to find the change in cost with
+                #respect to each weight and bias.
                 
-        #Matplotlib stuff I probably will delete
-        plt.plot(cost_over_time)
-        plt.ylabel("Cost")
-        plt.xlabel("Training Steps")
+                #change in Cost / change in activation
+                d_C_aL = 2 * (activation - desired_activation)
+
+                #ReLU just filters out negatives, so
+                #change in activation / change in original brightness = 1
+                #unless activation is 0
+                d_aL_zL_ReLU = 0 if activation == 0 else 1
+
+                #change in activation / change in preactivated brightness 
+                d_aL_zL_Softmax = activation * (1 - activation)
+
+                #Change in brightness / change in weight is just the previous activation's value
+                d_zL_wL = previousActivation
+                
+                #Compute d of cost function with respect to a weight
+                d_C_wL = d_C_aL * d_ReLU * d_zL_wL
+                
+                #Compute d of cost function with respect to biases   
+                d_C_bL = d_C_aL * d_aL_zL_ReLU #( * 1), for the change in zL with
+                #respect to the bias
+
+                #Compute d of cost function with respect to previous activation
+                d_C_aL_min1 = wL * d_C_aL * d_al_zL_ReLU 
+                
+                #change in Cost / Change in activation for before-last layers      
+         
+
+    def save(self):
+        np.save("weights.npy", self.weights)
+        np.save("biases.npy", self.biases)
+            
+    def load(self):
+        self.weights = np.load("weights.npy")
+        self.biases = np.load("biases.npy")
             
 class Draw:
+    #Initialize a network
     network = Network()
+    
     left_button = "up"
     status = "idle"
     draw_color = "#ffffff"
@@ -155,11 +192,14 @@ class Draw:
         self.left_button = "down"
         if self.left_button == "down":
             tile = event.widget.winfo_containing(event.x_root, event.y_root)
-            info = tile.grid_info()
-            if info and type(tile) == tk.Frame:
-                tk.Frame.configure(tile, bg = self.draw_color)  
-                r = info["row"]
-                c = info["column"]
+            if type(tile) == tk.Frame:
+                info = tile.grid_info()
+                try:
+                    r = info["row"]
+                    c = info["column"]
+                except:
+                    return
+                tk.Frame.configure(tile, bg = self.draw_color) 
                 #color touching tiles
                 right = self.tiles[r][c+1]
                 above = self.tiles[r+1][c]
@@ -175,11 +215,14 @@ class Draw:
 
     def b1motion(self, event=None):
             tile = event.widget.winfo_containing(event.x_root, event.y_root)
-            info = tile.grid_info()
-            if info and type(tile) == tk.Frame:
+            if type(tile) == tk.Frame:
+                info = tile.grid_info()
+                try:
+                    r = info["row"]
+                    c = info["column"]
+                except:
+                    return
                 tk.Frame.configure(tile, bg = self.draw_color)  
-                r = info["row"]
-                c = info["column"]
                 #color touching tiles
                 right = self.tiles[r][c+1]
                 above = self.tiles[r+1][c]
@@ -209,14 +252,27 @@ class Draw:
         print(self.input_drawing)
         #Make sure the data is not messed up somehow
         assert(len(self.input_drawing) == 784)
-    
-        #feed forward
-        
+
+        layers, weights, biases = self.network.feedforward(self.input_drawing, True)
+
+        for n in layers[-1]:
+            self.output_labels[n].configure(text = str(n) + "%")
         
         #Reset
-        self.input_drawing.clear()
+        #self.input_drawing.clear()
         self.enter_button_label.configure(text = "Enter")
-                
+
+    def beginNetworkTraining(self, event=None):
+        '''
+        #Load training data using library that interprets MNIST data files automatically.
+        #Otherwise, I would have to write code that interprets a custom file type, which
+        #I have no idea how to do.
+        '''
+        data = MNIST("TrainingData")
+        images, labels = data.load_training()
+        dataset = list(zip(labels, images))
+        network.train(dataset)
+        
     def __init__(self, root):
         #Title and top text
         top_frame = tk.Frame(root, bg = "#000000")
@@ -276,7 +332,8 @@ class Draw:
         load_button_label.pack()
         load_button.grid(row = 12, column = 0)
 
-        #Button for saying the network guessed wrong
+        #Button for saying the network guessed wrong, to
+        #backpropagate on the fly and correct the mistake
         incorrect_button = tk.Frame(right_frame, bg = "#000000", cursor = "hand2", pady = 5, padx = 10)
         incorrect_button_label = tk.Label(incorrect_button, text = "Guess Incorrect?", bg = "#ffffff")
         incorrect_button_label.pack()
@@ -288,6 +345,9 @@ class Draw:
         root.bind("<B1-Motion>", self.b1motion)
         clear_button_label.bind("<ButtonPress-1>", self.clearDrawing)
         self.enter_button_label.bind("<ButtonPress-1>", self.onEnter)
+        train_button.bind("<ButtonPress-1>", self.beginNetworkTraining)
+        save_button.bind("<ButtonPress-1>", self.network.save)
+        load_button.bind("<ButtonPress-1>", self.network.load)
         #organize sections of GUI
         top_frame.pack(side = "top", fill = "x")
         right_frame.pack(side = "right", padx = 5)
@@ -299,19 +359,11 @@ root = tk.Tk()
 root.title("Hand Written Digit NN")
 root.configure(bg = "#000000")
 
-network = Network()
-data = MNIST("TrainingData")
-images, labels = data.load_training()
-dataset = list(zip(labels, images))
-#network.train(dataset)
 app = Draw(root)
+
 tk.mainloop()
 
-'''
-#Load training data using library that interprets MNIST data files automatically.
-#Otherwise, I would have to write code that interprets a custom file type, which
-#I have no idea how to do.
-'''
+
 
 
 
