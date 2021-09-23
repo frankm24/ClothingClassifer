@@ -38,12 +38,13 @@ def normalize(number, minNumber, maxNumber):
 
 #Rectified Linear Unit, a simple activation function
 def relu(array):
-    for x in array:
-        x = 0 if x <= 0 else x
+    for number in array[:,0]: #column vector nonsense 
+        number = 0 if number <= 0 else number
     return array
 
 #The softmax function turns the array of output values into a probability matrix (sum of outputs = 1.0)
 def softmax(array):
+    print("Softmaxxing")
     numerator = np.exp(array)
     denominator = np.sum(numerator)
     return numerator / denominator
@@ -54,14 +55,14 @@ class Network:
         self.weights = [None for i in range(3)]
         self.biases = [None for i in range(3)]
         #initialize weights and biases as random, three sets of weights and biases
-        self.weights[0] = np.random.rand(16, 784) #16 hidden layer 1 nuerons, 784 weights each
-        self.biases[0] = np.random.rand(16, 1) #16 hidden layer 1 nuerons, one bias each
+        self.weights[0] = np.random.uniform(-0.1, 0.1, (16, 784)) #16 hidden layer 1 nuerons, 784 weights each
+        self.biases[0] = np.random.uniform(-0.1, 0.1, (16, 1)) #16 hidden layer 1 nuerons, one bias each
         
-        self.weights[1] = np.random.rand(16, 16) #16 hidden layer 2 nuerons, 16 weights each
-        self.biases[1] = np.random.rand(16, 1) #16 hidden layer 2 nuerons, one bias each
+        self.weights[1] = np.random.uniform(-0.1, 0.1, (16, 16)) #16 hidden layer 2 nuerons, 16 weights each
+        self.biases[1] = np.random.uniform(-0.1, 0.1, (16, 1)) #16 hidden layer 2 nuerons, one bias each
 
-        self.weights[2] = np.random.rand(10, 16) #10 output nuerons, 16 weights each
-        self.biases[2] = np.random.rand(10, 1) #10 output nuerons, one bias each
+        self.weights[2] = np.random.uniform(-0.1, 0.1, (10, 16)) #10 output nuerons, 16 weights each
+        self.biases[2] = np.random.uniform(-0.1, 0.1, (10, 1)) #10 output nuerons, one bias each
     #Compute cost of an output layer
     #After doing some googling, I realized that this method, which 3B1B explained in his video,
     #is the Sum Square Error, and is only one of the ways that loss/cost is computed.
@@ -77,27 +78,29 @@ class Network:
 
     #This functon now returns ALL the layers so I can use it for the backpropagation algorithm.
     #I may eventually need it to return the pre-activated neuron values, too. 
-    def feedforward(self, input_layer, softmax):
+    def feedforward(self, input_layer, use_softmax):
         #Why not double check? lol
         assert(len(input_layer) == 784)
-        
         layers = []
         layers.insert(0, np.array(input_layer))
         #Note that list[-1] == last item in list
         #for each set of weights and biases
-        for b, w in zip(self.biases, self.weights):
-            print(w)
-            print(layers[-1])
-            print(b)
-            #calculate the next layer matrix based on the previous layer * weights + biase            
-            layers.insert(len(layers), np.add(np.dot(w, layers[-1]), b) )
+        for b, w in zip(self.biases, self.weights):   
+            #calculate the next layer matrix based on the previous layer * weights + biases
+            #reshape necessary because numpy sucks 
+            array = np.dot(w, layers[-1])
+            reshaped = array.reshape(array.shape[0], 1)
+            reshaped_b = reshaped + b
+            layers.insert(len(layers), reshaped_b)
+            print(reshaped_b)
+            
             #If last layer, break loop, else, ReLU activate and continue
-            if w == self.weights[-1]:
+            if len(layers) == 4:
                 break
             else:
                 layers[-1] = relu(layers[-1])
         #Once out of loop, if softmax output is desired, softmax, else, return unchanged outputs
-        if softmax == true:
+        if use_softmax == True:
             layers[-1] = softmax(layers[-1])
         return layers, self.weights, self.biases
     
@@ -194,11 +197,8 @@ class Draw:
             tile = event.widget.winfo_containing(event.x_root, event.y_root)
             if type(tile) == tk.Frame:
                 info = tile.grid_info()
-                try:
-                    r = info["row"]
-                    c = info["column"]
-                except:
-                    return
+                r = info["row"]
+                c = info["column"]
                 tk.Frame.configure(tile, bg = self.draw_color) 
                 #color touching tiles
                 right = self.tiles[r][c+1]
@@ -217,11 +217,8 @@ class Draw:
             tile = event.widget.winfo_containing(event.x_root, event.y_root)
             if type(tile) == tk.Frame:
                 info = tile.grid_info()
-                try:
-                    r = info["row"]
-                    c = info["column"]
-                except:
-                    return
+                r = info["row"]
+                c = info["column"]
                 tk.Frame.configure(tile, bg = self.draw_color)  
                 #color touching tiles
                 right = self.tiles[r][c+1]
@@ -249,17 +246,18 @@ class Draw:
                 brightness = int(tile["bg"].lstrip('#')[:2], 16)
                 normalized_brightness = normalize(brightness, 0, 255)
                 self.input_drawing.insert(len(self.input_drawing), normalized_brightness)
-        print(self.input_drawing)
         #Make sure the data is not messed up somehow
         assert(len(self.input_drawing) == 784)
 
         layers, weights, biases = self.network.feedforward(self.input_drawing, True)
 
-        for n in layers[-1]:
-            self.output_labels[n].configure(text = str(n) + "%")
-        
-        #Reset
-        #self.input_drawing.clear()
+        for i, n in enumerate(layers[-1]):
+            print(i, " ", n)
+            #Format by multiplying by 100 and adding %, as well as removing NumPy brackets
+            self.output_labels[i].configure(text = str(i) + ": " +
+                                            str(n*100).replace("[","").replace("]","") + "%")
+            
+        self.input_drawing.clear()
         self.enter_button_label.configure(text = "Enter")
 
     def beginNetworkTraining(self, event=None):
@@ -353,7 +351,6 @@ class Draw:
         right_frame.pack(side = "right", padx = 5)
         bottom_frame.pack(side = "bottom")
         drawing_frame.pack(padx = 5)
-        print(drawing_frame.grid_info())
 
 root = tk.Tk()
 root.title("Hand Written Digit NN")
