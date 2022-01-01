@@ -11,7 +11,7 @@ and guesses which digit the user was drawing.
 The way in which I programmed this is probably very bad. My understanding of Python and the APIs which
 I used is very limited. To an experienced programmer, I'd imagine the code doesn't look great.
 But the goal of this project was not to become a perfect programmer.
-The goal of this project was to program a basic nueral net from the ground up so that when I use
+The goal of this project was to program a basic neural net from the ground up so that when I use
 machine learning APIs such as TensorFlow and PyTorch, I understand what the computer is actually doing
 from a mathematical standpoint.
 
@@ -44,7 +44,6 @@ def relu(array):
 
 #The softmax function turns the array of output values into a probability matrix (sum of outputs = 1.0)
 def softmax(array):
-    print("Softmaxxing")
     numerator = np.exp(array)
     denominator = np.sum(numerator)
     return numerator / denominator
@@ -55,21 +54,25 @@ class Network:
         self.weights = [None for i in range(3)]
         self.biases = [None for i in range(3)]
         #initialize weights and biases as random, three sets of weights and biases
-        self.weights[0] = np.random.uniform(-0.1, 0.1, (16, 784)) #16 hidden layer 1 nuerons, 784 weights each
-        self.biases[0] = np.random.uniform(-0.1, 0.1, (16, 1)) #16 hidden layer 1 nuerons, one bias each
+        self.weights[0] = np.random.uniform(-0.1, 0.1, (16, 784)) #16 hidden layer 1 neurons, 784 weights each
+        self.biases[0] = np.random.uniform(-0.1, 0.1, (16, 1)) #16 hidden layer 1 neurons, one bias each
         
-        self.weights[1] = np.random.uniform(-0.1, 0.1, (16, 16)) #16 hidden layer 2 nuerons, 16 weights each
-        self.biases[1] = np.random.uniform(-0.1, 0.1, (16, 1)) #16 hidden layer 2 nuerons, one bias each
+        self.weights[1] = np.random.uniform(-0.1, 0.1, (16, 16)) #16 hidden layer 2 neurons, 16 weights each
+        self.biases[1] = np.random.uniform(-0.1, 0.1, (16, 1)) #16 hidden layer 2 neurons, one bias each
 
-        self.weights[2] = np.random.uniform(-0.1, 0.1, (10, 16)) #10 output nuerons, 16 weights each
-        self.biases[2] = np.random.uniform(-0.1, 0.1, (10, 1)) #10 output nuerons, one bias each
+        self.weights[2] = np.random.uniform(-0.1, 0.1, (10, 16)) #10 output neurons, 16 weights each
+        self.biases[2] = np.random.uniform(-0.1, 0.1, (10, 1)) #10 output neurons, one bias each
     #Compute cost of an output layer
     #After doing some googling, I realized that this method, which 3B1B explained in his video,
     #is the Sum Square Error, and is only one of the ways that loss/cost is computed.
     #Most common is Mean Square Error
-    def cost(self, desired_guess, output_layer):
+    def labelToDesiredValuesArray(self, label):
         desired_values = np.zeros(10)
-        desired_values[desired_guess] = 1
+        desired_values[label] = 1
+        return desired_values
+    
+    def cost(self, desired_guess, output_layer):
+        desired_Values = labelToDesiredValuesArray(desired_guess)
         cost_array = np.zeros(10)
         for cost, desired, output in zip(cost_array, desired_values, output_layer):
             cost = (output - desired) ** 2
@@ -87,12 +90,12 @@ class Network:
         #for each set of weights and biases
         for b, w in zip(self.biases, self.weights):   
             #calculate the next layer matrix based on the previous layer * weights + biases
-            #reshape necessary because numpy sucks 
+            #reshape necessary because numpy
+            #weights first bc it determines shape
             array = np.dot(w, layers[-1])
             reshaped = array.reshape(array.shape[0], 1)
             reshaped_b = reshaped + b
             layers.insert(len(layers), reshaped_b)
-            print(reshaped_b)
             
             #If last layer, break loop, else, ReLU activate and continue
             if len(layers) == 4:
@@ -105,8 +108,13 @@ class Network:
         return layers, self.weights, self.biases
     
     #train using backpropogation algorithm
-    def train(self, dataset):
-        cost_over_time = []
+    def train(self, dataset, epochs):
+        print("Training...")
+
+        cost_points = ([[], []])
+        plt.ylabel('Random Cost/Loss')
+        plt.xlabel('Batch')
+        
         #use stochastic graident descent
  
         #Using arbirtary batch size, google search showed that ~32 was common
@@ -114,69 +122,105 @@ class Network:
         #https://www.geeksforgeeks.org/break-list-chunks-size-n-python/
         batch_size = 32
         dataset = [dataset[i:i + batch_size] for i in range(0, len(dataset), batch_size)]
-        print(dataset)
         
         #find d of estimated cost function (only from batch, not all data) with respect to
         #each weight and bias. This shows how much each weight and each bias should be changed to
         #move in the negative gradient direction and minimize cost.
-        gradient_vector = []
-        
-        #for each batch
-        for batch in dataset:
-            #for each case in batch
-            for label, image in batch:
-                print(label, image[0][0])
-                #Get network nueron values when fed the training example
-                layers, weights, biases = feedforward(image, True)
-                #compute cost value
-                C = cost(label, result[-1])
+
+        for i in range(epochs):
+            print("Epoch " + str(i))
+            #for each batch
+            for j, batch in enumerate(dataset):
+                g_weights = None
+                g_biases = None
+                #for each case in batch
+                for batch_number, (label, image) in enumerate(batch):
+                    #Get network neuron values when fed the training example
+                    layers, weights, biases = self.feedforward(image, True)          
+
+                    #Make components of gradient vector in an organized fashion
+                    g_weights = [[np.zeros((16, 784)), np.zeros((16, 16)), np.zeros((10, 16))] for i in range(batch_size - 1)]
+                    g_biases = [[np.zeros((16, 1)), np.zeros((16, 1)), np.zeros((10, 1))] for i in range(batch_size - 1)]
+
+                    #for each layer of network
+                    for layer_index, layer in reversed(list(enumerate(layers))):
+                        #if last layer
+                        if layer_index == len(layers)-1:
+                            #use desired values for computing change in Cost wrt change in activation
+                            y_values = self.labelToDesiredValuesArray(label)
+                            for neuron_index, (activation, y_value) in enumerate(zip(layer, y_values)):
+                                #change in Cost / change in activation
+                                d_C_aL = 2 * (activation - y_value)
+                                #change in activation / change in preactivated brightness 
+                                d_aL_zL_Softmax = activation * (1 - activation)
+ 
+                                for weight_index, weight in enumerate(self.weights[layer_index - 1][neuron_index]):
+                                    d_zL_wL = layers[layer_index - 2][neuron_index]
+                                    #Compute derivative of cost function with respect to a weight
+                                    d_C_wL = d_C_aL * d_aL_zL_Softmax * d_zL_wL
+
+                                    #Add weight to gradient vector
+                                    g_weights[batch_index][layer_index - 1][neuron_index][weight_index] = d_C_wL
+                                    
+                                d_C_bL = d_C_aL * d_aL_zL_Softmax
+                                g_biases[batch_index][layer_index - 1][neuron_index] = d_C_bL
+                            
+                        else:
+                            
+                            for neuron_index, activation in enumerate(layer):
+                                #change in Cost / change in activation
+                                d_C_aL = 2 * (activation - y_values[neuron_index])  
+                                d_C_aL = np.sum( for i in layers[layer_index+1])
+                                #ReLU just filters out negatives, so
+                                #change in activation / change in original brightness = 1
+                                #unless activation is 0
+                                d_aL_zL_ReLU = 0 if activation == 0 else 1
+
+                                for weight_index, weight in enumerate(self.weights[layer_index-1][neuron_index]):
+                                    d_zL_wL = layers[layer_index - 2][neuron_index]
+                                    #Compute derivative of cost function wrt a weight
+                                    d_C_wL = d_C_aL * d_aL_zL_ReLU * d_zL_wL
                 
-                #for layer in reversed(result):
-                    
-                #The following is just notes for stuff I need to compute.
-                #I do NOT know how to find these ds but I watched the 3Blue1Brwon video on
-                #the chain rule in nueral networks and backpropogation calculus so I think I can
-                #get it working at some point.
+                                    #Add weight to gradient vector
+                                    g_weights[batch_index][layer_index - 1][neuron_index][weight_index] = d_C_wL
 
-                #Also need d of activation with respect to brightness using the softmax,
-                #because a softmax is applied to output as opposed to a ReLU at the final layer,
-                #and the activation function is always needed to find the change in cost with
-                #respect to each weight and bias.
+                                #Compute derivative of cost function wrt biases   
+                                d_C_bL = d_C_aL * d_aL_zL_ReLU #( * 1), for the change in zL with
+                                #respect to the bias
+                                g_biases[batch_index][layer_index - 1][neuron_index] = d_C_bL
+                                
+                mean_g_weights = np.mean(g_weights)
+                mean_g_biases = np.mean(g_biases)
                 
-                #change in Cost / change in activation
-                d_C_aL = 2 * (activation - desired_activation)
-
-                #ReLU just filters out negatives, so
-                #change in activation / change in original brightness = 1
-                #unless activation is 0
-                d_aL_zL_ReLU = 0 if activation == 0 else 1
-
-                #change in activation / change in preactivated brightness 
-                d_aL_zL_Softmax = activation * (1 - activation)
-
-                #Change in brightness / change in weight is just the previous activation's value
-                d_zL_wL = previousActivation
+                for index, (g_w, g_b) in enumerate(zip(mean_g_weights, mean_g_biases)):
+                    #Add -1 * gradient vector
+                    self.weights[index] -= g_w[index]
+                    self.biases[index] -= g_b[index]
                 
-                #Compute d of cost function with respect to a weight
-                d_C_wL = d_C_aL * d_ReLU * d_zL_wL
-                
-                #Compute d of cost function with respect to biases   
-                d_C_bL = d_C_aL * d_aL_zL_ReLU #( * 1), for the change in zL with
-                #respect to the bias
-
-                #Compute d of cost function with respect to previous activation
-                d_C_aL_min1 = wL * d_C_aL * d_al_zL_ReLU 
-                
-                #change in Cost / Change in activation for before-last layers      
-         
-
-    def save(self):
-        np.save("weights.npy", self.weights)
-        np.save("biases.npy", self.biases)
+                print("Batch: " + str(j))
+                #Possible code for calculating cost, could do average if it doesn't
+                #slow down the code too much
+                '''
+                random_case = dataset[random.randint(0, 31)][random.randint(0, 1874)]
+                print(random_case)
+                l, w, b = self.feedforward(random_case, True)
+                cost_points[0].append(cost(l))
+                cost_points[1].append(j)
+                plt.plot(cost_points)
+                plt.show()
+                '''
             
-    def load(self):
-        self.weights = np.load("weights.npy")
-        self.biases = np.load("biases.npy")
+    def save(self, event=None):
+        np.savez("weights.npz", name1 = self.weights[0], name2 = self.weights[1], name3 = self.weights[2])
+        np.savez("biases.npz", name1 = self.biases[0], name2 = self.biases[1], name3 = self.biases[2])
+            
+    def load(self, event=None):
+        weights_data = np.load("weights.npz")
+        biases_data = np.load("biases.npz")
+        for i, data in enumerate(weights_data):
+            self.weights[i] = data
+        for i, data in enumerate(biases_data):
+            self.biases[i] = data
             
 class Draw:
     #Initialize a network
@@ -191,7 +235,7 @@ class Draw:
     tiles = [[0 for c in range(28)] for r in range(28)] #https://www.geeksforgeeks.org/python-using-2d-arrays-lists-the-right-way/
     output_labels = []
 
-    def left_button_down(self, event=None):
+    def leftButtonDown(self, event=None):
         self.left_button = "down"
         if self.left_button == "down":
             tile = event.widget.winfo_containing(event.x_root, event.y_root)
@@ -210,7 +254,7 @@ class Draw:
                 tk.Frame.configure(left, bg = self.draw_color2)
                 tk.Frame.configure(below, bg = self.draw_color2)   
                 
-    def left_button_up(self, event=None):
+    def leftButtonUp(self, event=None):
         self.left_button = "up"
 
     def b1motion(self, event=None):
@@ -255,7 +299,7 @@ class Draw:
             print(i, " ", n)
             #Format by multiplying by 100 and adding %, as well as removing NumPy brackets
             self.output_labels[i].configure(text = str(i) + ": " +
-                                            str(n*100).replace("[","").replace("]","") + "%")
+                                             str(n*100).replace("[","").replace("]","") + "%")
             
         self.input_drawing.clear()
         self.enter_button_label.configure(text = "Enter")
@@ -266,12 +310,15 @@ class Draw:
         #Otherwise, I would have to write code that interprets a custom file type, which
         #I have no idea how to do.
         '''
-        data = MNIST("TrainingData")
+        data = MNIST("./TrainingData")
         images, labels = data.load_training()
         dataset = list(zip(labels, images))
-        network.train(dataset)
+        self.network.train(dataset, 10)
         
     def __init__(self, root):
+        #Ignore overflow error
+        #np.seterr(over="ignore")
+        
         #Title and top text
         top_frame = tk.Frame(root, bg = "#000000")
         drawing_frame = tk.Frame(root, bg = "#000000", cursor = "pencil", highlightbackground = "#ffffff",
@@ -279,9 +326,9 @@ class Draw:
         bottom_frame = tk.Frame(root, bg = "#000000")
         right_frame = tk.Frame(root, bg = "#000000")
         
-        title = tk.Label(top_frame, text = "Hand Written Digits Nueral Network", fg = "#ffffff",
+        title = tk.Label(top_frame, text = "Hand Written Digits Neural Network", fg = "#ffffff",
                          bg = "#000000", font = (None, 30))
-        info = tk.Label(top_frame, text = "Draw a digit and the nueral network will guess what it is! (Train it first)",
+        info = tk.Label(top_frame, text = "Draw a digit and the neural network will guess what it is! (Train it first)",
                         fg = "#ffffff", bg = "#000000")  
         info.pack(side = "bottom")
         title.pack(side = "top")
@@ -305,7 +352,7 @@ class Draw:
                  tile.grid(row=r,column=c)
                  self.tiles[r][c] = tile
         
-        #Grid list of labels for probabilities/output of nueral net
+        #Grid list of labels for probabilities/output of neural net
         output_title = tk.Label(right_frame, text = "Output:", bg = "#000000", fg = "#ffffff")
         for r in range(10):
             label = tk.Label(right_frame, text = str(r) + ": 0%", bg = "#000000", fg = "#ffffff")
@@ -338,14 +385,14 @@ class Draw:
         incorrect_button.grid(row = 13, column = 0)
         
         #event bindings
-        root.bind("<ButtonPress-1>", self.left_button_down)
-        root.bind("<ButtonRelease-1>", self.left_button_up)
+        root.bind("<ButtonPress-1>", self.leftButtonDown)
+        root.bind("<ButtonRelease-1>", self.leftButtonUp)
         root.bind("<B1-Motion>", self.b1motion)
         clear_button_label.bind("<ButtonPress-1>", self.clearDrawing)
         self.enter_button_label.bind("<ButtonPress-1>", self.onEnter)
-        train_button.bind("<ButtonPress-1>", self.beginNetworkTraining)
-        save_button.bind("<ButtonPress-1>", self.network.save)
-        load_button.bind("<ButtonPress-1>", self.network.load)
+        train_button_label.bind("<ButtonPress-1>", self.beginNetworkTraining)
+        save_button_label.bind("<ButtonPress-1>", self.network.save)
+        load_button_label.bind("<ButtonPress-1>", self.network.load)
         #organize sections of GUI
         top_frame.pack(side = "top", fill = "x")
         right_frame.pack(side = "right", padx = 5)
@@ -360,15 +407,41 @@ app = Draw(root)
 
 tk.mainloop()
 
+'''                  
+#The following is just notes for stuff I need to compute.
+#I do NOT know how to find these ds but I watched the 3Blue1Brwon video on
+#the chain rule in neural networks and backpropogation calculus so I think I can
+#get it working at some point.
 
+#Also need d of activation wrt brightness using the softmax,
+#because a softmax is applied to output as opposed to a ReLU at the final layer,
+#and the activation function is always needed to find the change in cost with
+#respect to each weight and bias.
 
+#change in Cost / change in activation
+d_C_aL = 2 * (activation - desired_activation)
 
+#ReLU just filters out negatives, so
+#change in activation / change in original brightness = 1
+#unless activation is 0
+d_aL_zL_ReLU = 0 if activation == 0 else 1
 
-#for case in zip(labels, images):
-#   print(case)
-#   label = case[0]
-#   image = case[1]
+#change in activation / change in preactivated brightness 
+d_aL_zL_Softmax = activation * (1 - activation)
 
+#Change in brightness / change in weight is just the previous activation's value
+d_zL_wL = previousActivation
 
-    
+#Compute derivative of cost function wrt a weight
+d_C_wL = d_C_aL * d_ReLU * d_zL_wL
 
+#Compute derivative of cost function wrt biases   
+d_C_bL = d_C_aL * d_aL_zL_ReLU #( * 1), for the change in zL with
+#respect to the bias
+
+#Compute derivative of cost function wrt previous activation
+d_C_aL_min1 = wL * d_C_aL * d_al_zL_ReLU 
+
+#change in Cost / Change in activation for before-last layers
+#needed to go backwards to the next set of weights and biases
+'''
