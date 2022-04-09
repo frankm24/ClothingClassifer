@@ -25,10 +25,15 @@ using momentum + learning rate: step vector = -1 * batch_vector * learning_rate 
 -is it better or worse than
 gradient descent using gradient vector of entire training set?
 
-AdaGrad
-freaking useless.
+AdaGrad - "adaptive gradient"
+"AdaGrad provides a way to normalize parameter updates by keeping a history of previous updates — the bigger the
+sum of the updates is, in either direction (positive or negative), the smaller updates are made further in training.
+This lets less-frequently updated parameters to keep-up with changes, effectively utilizing more neurons for training."
 
-L1 + L2 regularization
+RMSProp - "Root Mean Square Propagation":
+same idea as AdaGrad but calculated using a more effective formula
+
+L1 + L2 regularization:
 
 Goal: to penalize the network when it learns to use weights and biases that are "too strong" or of a very high relative
 magnitude to other paramaters of the network. Works by adding penalty values (L1 and/or L2) to the loss/cost which are higher
@@ -58,6 +63,29 @@ the behavior of the network. Dropout should obviously not be used in predicting,
 to keep the magnitude of the neuron values on a consistent scale, the neuron values should be
 scaled back up proportionally to the dropout coefficent.
 ex.) dropout_rate = 0.5, output for one kept neuron = activated_neuron / (1-dropout_rate)
+
+Binary Logistic Regression:
+an alternate output layer option, where each neuron separately represents two classes — 0 for
+one of the classes, and a 1 for the other.
+
+uses sigmoid (which I already know) as activation function vs softmax and binary cross entropy
+to calculate loss
+
+great explanation:
+https://towardsdatascience.com/understanding-binary-cross-entropy-log-loss-a-visual-explanation-a3ac6025181a
+
+IMPORTANT NOTE ABOUT ADAM:
+learning_rate=0.005, decay=5e-5 seem to be better on the spiral dataset, it seems the book suggests
+a default learning rate which is WAY too low. (0.001)
+
+When switching to those parameters, the binary logistic regression model performed way better than even
+in the book. (validation, acc: 0.980, loss: 0.112 vs. validation, acc: 0.945, loss: 0.207)
+
+Regression vs. Classification:
+Since I'm moving on to regression in the book I thought I would write this down so people do not think I'm
+dumb: yes I know the difference between classification, which classifies inputs (outputs a classification),
+and regression, which predicts a scalar output value with given inputs.
+
     
 '''
 
@@ -223,6 +251,14 @@ class Activation_Softmax_Loss_CategoricalCrossEntropy:
         self.dinputs = dvalues.copy()
         self.dinputs[range(samples), y_true] -= 1
         self.dinputs = self.dinputs / samples
+        
+class Activation_Sigmoid:
+    def forward(self, inputs):
+        self.inputs = inputs
+        self.output = 1 / (1 + np.exp(-inputs))
+
+    def backward(self, dvalues):
+        self.dinputs = dvalues * (1 - self.output) * self.output
 
 class Loss:
     def remember_trainable_layers(self, trainable_layers):
@@ -250,6 +286,16 @@ class Loss:
             regularization_loss += layer.bias_regularizer_l2 *np.sum(layer.biases * layer.biases)
 
         return regularization_loss
+
+class Activation_Linear:
+    def forward(self, inputs):
+        # Just remember values
+        self.inputs = inputs
+        self.output = inputs
+
+    def backward(self, dvalues):
+        # derivative is 1, 1 * dvalues = dvalues - the chain rule
+        self.dinputs = dvalues.copy()
     
 class Loss_CategoricalCrossEntropy(Loss):
     def forward(self, y_pred, y_true):
@@ -278,6 +324,33 @@ class Loss_CategoricalCrossEntropy(Loss):
             y_true = np.eye(labels)[y_true]
         # Calc gradient
         self.dinputs = -y_true / dvalues
+        # Normalize gradient
+        self.dinputs = self.dinputs / samples
+
+class Loss_BinaryCrossentropy(Loss): # Forward pass
+    def forward(self, y_pred, y_true):
+        # Clip data to prevent division by 0
+        # Clip both sides to not drag mean towards any value
+        y_pred_clipped = np.clip(y_pred, 1e-7, 1 - 1e-7)
+         
+         # Calculate sample-wise loss
+        sample_losses = -(y_true * np.log(y_pred_clipped) +
+                          (1 - y_true) * np.log(1 - y_pred_clipped))
+        sample_losses = np.mean(sample_losses, axis=-1)
+    
+        return sample_losses
+    
+    def backward(self, dvalues, y_true):
+        samples = len(dvalues)
+        # Number of outputs in every sample
+        # We'll use the first sample to count them
+        outputs = len(dvalues[0])
+        # Clip data to prevent division by 0
+        # Clip both sides to not drag mean towards any value
+        clipped_dvalues = np.clip(dvalues, 1e-7, 1 - 1e-7)
+        # Calculate gradient
+        self.dinputs = -(y_true / clipped_dvalues -
+                           (1 - y_true) / (1 - clipped_dvalues)) / outputs
         # Normalize gradient
         self.dinputs = self.dinputs / samples
 
@@ -422,36 +495,35 @@ class Optimizer_Adam:
 
 #--{End Library}--#
 
-X, y = spiral_data(samples=1000, classes=3)
+X, y = spiral_data(samples=100, classes=2)
+
+y = y.reshape(-1, 1)
 #print(X)
 #print(y)
 
-dense1 = Layer_Dense(2, 512, weight_regularizer_l2=5e-4, bias_regularizer_l2=5e-4)
+dense1 = Layer_Dense(2, 64, weight_regularizer_l2=5e-4, bias_regularizer_l2=5e-4)
 activation1 = Activation_ReLU()
 
-dropout1 = Layer_Dropout(0.1)
-
-dense2 = Layer_Dense(512, 3)
-loss_activation = Activation_Softmax_Loss_CategoricalCrossEntropy()
+dense2 = Layer_Dense(64, 1)
+activation2 = Activation_Sigmoid()
+loss_function = Loss_BinaryCrossentropy()
 
 #optimizer = Optimizer_SGD(decay=1e-3,momentum=0.9)
 #optimizer = Optimizer_Adagrad(decay=1e-4)
 #optimizer = Optimizer_RMSprop(learning_rate=0.02, decay=1e-6, rho=0.999)
-optimizer = Optimizer_Adam(learning_rate=0.05, decay=5e-5)
+optimizer = Optimizer_Adam(learning_rate=0.005, decay=5e-5)
 
 for epoch in range(10001):
     dense1.forward(X)
     activation1.forward(dense1.output)
-    dropout1.forward(activation1.output)
-    dense2.forward(dropout1.output)
-    data_loss = loss_activation.forward(dense2.output, y)
-    regularization_loss = loss_activation.loss.regularization_loss(dense1) + loss_activation.loss.regularization_loss(dense2)
+    dense2.forward(activation1.output)
+    activation2.forward(dense2.output)
+    data_loss = loss_function.calculate(activation2.output, y)
+    regularization_loss = loss_function.regularization_loss(dense1) + loss_function.regularization_loss(dense2)
     loss = data_loss + regularization_loss
 
-    predictions = np.argmax(loss_activation.output, axis=1)
-    if len(y.shape) == 2:
-        y = np.argmax(y, axis=1)
-    accuracy = np.mean(predictions==y)
+    predictions = (activation2.output > 0.5) * 1
+    accuracy = np.mean(predictions == y)
 
     if not epoch % 100:
        print(f'epoch: {epoch}, ' +
@@ -461,10 +533,10 @@ for epoch in range(10001):
             f'reg_loss: {regularization_loss:.3f}), ' +
             f'lr: {optimizer.current_learning_rate}')
 
-    loss_activation.backward(loss_activation.output, y)
-    dense2.backward(loss_activation.dinputs)
-    dropout1.backward(dense2.dinputs)
-    activation1.backward(dropout1.dinputs)
+    loss_function.backward(activation2.output, y)
+    activation2.backward(loss_function.dinputs)
+    dense2.backward(activation2.dinputs)
+    activation1.backward(dense2.dinputs)
     dense1.backward(activation1.dinputs)
 
     optimizer.pre_update_params()
@@ -472,18 +544,23 @@ for epoch in range(10001):
     optimizer.update_params(dense2)
     optimizer.post_update_params()
     
-X_test, y_test = spiral_data(samples=100, classes=3)
+X_test, y_test = spiral_data(samples=100, classes=2)
+y_test = y_test.reshape(-1, 1)
 
 dense1.forward(X_test)
 activation1.forward(dense1.output)
 dense2.forward(activation1.output)
-loss = loss_activation.forward(dense2.output, y_test)
-predictions = np.argmax(loss_activation.output, axis=1)
+activation2.forward(dense2.output)
 
-if len(y_test.shape) == 2:
-    y_test = np.argmax(y_test, axis=1)
+loss = loss_function.calculate(activation2.output, y_test)
+# Calculate accuracy from output of activation2 and targets
+# Part in the brackets returns a binary mask - array consisting of
+# True/False values, multiplying it by 1 changes it into array
+# of 1s and 0s
+predictions = (activation2.output > 0.5) * 1
 accuracy = np.mean(predictions == y_test)
 print(f'validation, acc: {accuracy:.3f}, loss: {loss:.3f}')
+
 
 
 
