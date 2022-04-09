@@ -495,6 +495,8 @@ class Optimizer_Adam:
 
 #--{End Library}--#
 
+#Best version of spiral dataset classifier
+
 X, y = spiral_data(samples=100, classes=2)
 
 y = y.reshape(-1, 1)
