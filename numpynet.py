@@ -1,7 +1,8 @@
 import math
 import numpy as np
 import nnfs
-from nnfs.datasets import spiral_data
+from nnfs.datasets import spiral_data, sine_data
+import matplotlib.pyplot as plt
 
 nnfs.init()
 
@@ -80,15 +81,21 @@ a default learning rate which is WAY too low. (0.001)
 
 When switching to those parameters, the binary logistic regression model performed way better than even
 in the book. (validation, acc: 0.980, loss: 0.112 vs. validation, acc: 0.945, loss: 0.207)
+also, https://twitter.com/karpathy/status/801621764144971776?lang=en
 
 Regression vs. Classification:
 Since I'm moving on to regression in the book I thought I would write this down so people do not think I'm
 dumb: yes I know the difference between classification, which classifies inputs (outputs a classification),
 and regression, which predicts a scalar output value with given inputs.
 
+Note about accuracy_precision:
+
+This value dictates how close an output can be to the correct output before it is considered to be correct,
+or usable. The accuracy is calculated as the average of 1s and 0s for each output neuron where a 1 means
+that the predicted value was close enough to be considered correct.
+
     
 '''
-
 
 # All designed to  be run in batches of inputs, to compute single output, make batch with only one
 # set.
@@ -354,6 +361,30 @@ class Loss_BinaryCrossentropy(Loss): # Forward pass
         # Normalize gradient
         self.dinputs = self.dinputs / samples
 
+class Loss_MeanSquaredError(Loss):
+    def forward(self, y_pred, y_true):
+        sample_losses = np.mean((y_true-y_pred) ** 2, axis=-1)
+        return sample_losses
+
+    def backward(self, dvalues, y_true):
+        samples = len(dvalues)
+        outputs = len(dvalues[0])
+        # Gradient on values
+        self.dinputs = -2 * (y_true - dvalues) / outputs
+        # Normalize gradient
+        self.dinputs = self.dinputs / samples
+
+class Loss_MeanAbsoluteError(Loss):
+    def forward(self, y_pred, y_true):
+        sample_losses = np.mean(np.abs(y_true-y_pred), axis=-1)
+        return sample_losses
+
+    def backward(self, dvalues, y_true):
+        samples = len(dvalues)
+        outputs = len(dvalues[0])
+        self.dinputs = np.sign(y_true - dvalues) / outputs
+        self.dinputs = self.dinputs / samples
+
 class Accuracy:
     def calculate(self, predictions, y):
         comparisons = self.compare(predictions, y)
@@ -497,35 +528,49 @@ class Optimizer_Adam:
 
 #Best version of spiral dataset classifier
 
-X, y = spiral_data(samples=100, classes=2)
+X, y = sine_data()
 
-y = y.reshape(-1, 1)
-#print(X)
-#print(y)
-
-dense1 = Layer_Dense(2, 64, weight_regularizer_l2=5e-4, bias_regularizer_l2=5e-4)
+dense1 = Layer_Dense(1, 64)
 activation1 = Activation_ReLU()
 
-dense2 = Layer_Dense(64, 1)
-activation2 = Activation_Sigmoid()
-loss_function = Loss_BinaryCrossentropy()
+dense2 = Layer_Dense(64, 64)
+activation2 = Activation_ReLU()
+
+dense3 = Layer_Dense(64, 1)
+activation3 = Activation_Linear()
+loss_function = Loss_MeanSquaredError()
 
 #optimizer = Optimizer_SGD(decay=1e-3,momentum=0.9)
 #optimizer = Optimizer_Adagrad(decay=1e-4)
 #optimizer = Optimizer_RMSprop(learning_rate=0.02, decay=1e-6, rho=0.999)
-optimizer = Optimizer_Adam(learning_rate=0.005, decay=5e-5)
+optimizer = Optimizer_Adam(learning_rate = 0.005, decay=1e-3)
+accuracy_precision = np.std(y) / 250
 
 for epoch in range(10001):
     dense1.forward(X)
     activation1.forward(dense1.output)
     dense2.forward(activation1.output)
     activation2.forward(dense2.output)
-    data_loss = loss_function.calculate(activation2.output, y)
-    regularization_loss = loss_function.regularization_loss(dense1) + loss_function.regularization_loss(dense2)
+    dense3.forward(activation2.output)
+    activation3.forward(dense3.output)
+    if epoch == 0:
+        plt.ion()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        line1, = ax.plot(X, y)
+        line2, = ax.plot(X, activation3.output)
+    line2.set_ydata(activation3.output)
+    plt.pause(0.000000000000000000000000000000000001)
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+
+    data_loss = loss_function.calculate(activation3.output, y)
+    regularization_loss = loss_function.regularization_loss(dense1) + loss_function.regularization_loss(dense2) + loss_function.regularization_loss(dense3)
     loss = data_loss + regularization_loss
 
-    predictions = (activation2.output > 0.5) * 1
-    accuracy = np.mean(predictions == y)
+    predictions = activation3.output
+    accuracy = np.mean(np.abs(predictions - y) <
+                   accuracy_precision)
 
     if not epoch % 100:
        print(f'epoch: {epoch}, ' +
@@ -535,8 +580,10 @@ for epoch in range(10001):
             f'reg_loss: {regularization_loss:.3f}), ' +
             f'lr: {optimizer.current_learning_rate}')
 
-    loss_function.backward(activation2.output, y)
-    activation2.backward(loss_function.dinputs)
+    loss_function.backward(activation3.output, y)
+    activation3.backward(loss_function.dinputs)
+    dense3.backward(activation3.dinputs)
+    activation2.backward(dense3.dinputs)
     dense2.backward(activation2.dinputs)
     activation1.backward(dense2.dinputs)
     dense1.backward(activation1.dinputs)
@@ -544,25 +591,25 @@ for epoch in range(10001):
     optimizer.pre_update_params()
     optimizer.update_params(dense1)
     optimizer.update_params(dense2)
+    optimizer.update_params(dense3)
     optimizer.post_update_params()
     
-X_test, y_test = spiral_data(samples=100, classes=2)
-y_test = y_test.reshape(-1, 1)
+X_test, y_test = sine_data()
 
 dense1.forward(X_test)
 activation1.forward(dense1.output)
 dense2.forward(activation1.output)
 activation2.forward(dense2.output)
+dense3.forward(activation2.output)
+activation3.forward(dense3.output)
 
-loss = loss_function.calculate(activation2.output, y_test)
-# Calculate accuracy from output of activation2 and targets
-# Part in the brackets returns a binary mask - array consisting of
-# True/False values, multiplying it by 1 changes it into array
-# of 1s and 0s
-predictions = (activation2.output > 0.5) * 1
-accuracy = np.mean(predictions == y_test)
+loss = loss_function.calculate(activation3.output, y_test)
+
+predictions = activation3.output
+accuracy = np.mean(np.abs(predictions - y) < accuracy_precision)
+
+plt.plot(X_test, y_test)
+plt.plot(X_test, activation3.output)
+plt.show()
+
 print(f'validation, acc: {accuracy:.3f}, loss: {loss:.3f}')
-
-
-
-
