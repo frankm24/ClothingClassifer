@@ -641,21 +641,7 @@ class Model:
         train_steps = 1
 
         if validation_data is not None:
-            validation_steps = 1
-            # For better readability
-            X_val, y_val = validation_data
-        
-        if batch_size is not None:
-            # Account for integer division rounding down
-            train_steps = len(X) // batch_size
-            if train_steps * batch_size < len(X):
-                train_steps += 1
-            
-            if validation_data is not None:
-                # Account for integer division rounding down
-                validation_steps = len(X_val) // batch_size
-                if validation_steps * batch_size < len(X_val):
-                    validation_steps += 1
+            self.evaluate(*validation_data, batch_size=batch_size)
         
         #Making epochs start on 1, lol
         for epoch in range(1, epochs+1):
@@ -705,25 +691,38 @@ class Model:
                     f'lr: {self.optimizer.current_learning_rate}')
             ##--{Validate After Each Epoch}--##
             if validation_data is not None:
-                self.loss.new_pass()
-                self.accuracy.new_pass()
-                
-                for step in range(validation_steps):
-                    if batch_size is None:
-                        batch_X = X_val
-                        batch_y = y_val
-                        # Otherwise slice a batch
-                    else:
-                        batch_X = X_val[step*batch_size:(step+1)*batch_size]
-                        batch_y = y_val[step*batch_size:(step+1)*batch_size]
-                    
-                    output = self.forward(batch_X, training=False)
-                    self.loss.calculate(output, batch_y)
-                    predictions = self.output_layer_activation.predictions(output)
-                    self.accuracy.calculate(predictions, batch_y)
-                validation_loss = self.loss.calculate_accumulated()
-                validation_accuracy = self.accuracy.calculate_accumulated()
-                print(f'validation, ' + f'acc: {validation_accuracy:.3f}, ' + f'loss: {validation_loss:.3f}')
+                self.evaluate(*validation_data, batch_size=batch_size)
+            
+    def evaluate(self, X_val, y_val, *, batch_size=None):
+        # Default value if batch size is not being set
+        validation_steps = 1
+        # Calculate number of steps
+        if batch_size is not None:
+            validation_steps = len(X_val) // batch_size
+            if validation_steps * batch_size < len(X_val):
+                validation_steps += 1
+
+        self.loss.new_pass()
+        self.accuracy.new_pass()
+
+        for step in range(validation_steps):
+            if batch_size is None:
+                batch_X = X_val
+                batch_y = y_val
+            # Otherwise slice a batch
+            else:
+                batch_X = X_val[step*batch_size:(step+1)*batch_size]
+                batch_y = y_val[step*batch_size:(step+1)*batch_size]
+            output = self.forward(batch_X, training=False) 
+            self.loss.calculate(output, batch_y)
+            predictions = self.output_layer_activation.predictions(output)
+            self.accuracy.calculate(predictions, batch_y)
+
+        validation_loss = self.loss.calculate_accumulated()
+        validation_accuracy = self.accuracy.calculate_accumulated()
+        print(f'validation, ' +
+                f'acc: {validation_accuracy:.3f}, ' +
+                f'loss: {validation_loss:.3f}')
                 
 #--{End Library}--#
 '''
@@ -778,11 +777,11 @@ X = (X.reshape(X.shape[0], -1).astype(np.float32) - 127.5) / 127.5
 X_test = (X_test.reshape(X_test.shape[0], -1).astype(np.float32) - 127.5) / 127.5
 
 model = Model()
-model.add(Layer_Dense(X.shape[1], 512))
+model.add(Layer_Dense(X.shape[1], 128))
 model.add(Activation_ReLU())
-model.add(Layer_Dense(512, 512))
+model.add(Layer_Dense(128, 128))
 model.add(Activation_ReLU())
-model.add(Layer_Dense(512, 10))
+model.add(Layer_Dense(128, 10))
 model.add(Activation_Softmax())
 
 model.set(loss=Loss_CategoricalCrossentropy(), optimizer=Optimizer_Adam(decay=1e-3), accuracy=Accuracy_Categorical())
