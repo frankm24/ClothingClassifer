@@ -126,8 +126,8 @@ class Layer_Dense:
         self.bias_regularizer_l1 = bias_regularizer_l1
         self.bias_regularizer_l2 = bias_regularizer_l2
     def forward(self, inputs, training):
-        self.output = np.dot(inputs, self.weights) + self.biases
         self.inputs = inputs
+        self.output = np.dot(inputs, self.weights) + self.biases
 
     def backward(self, dvalues):
         # Gradients on parameters
@@ -154,18 +154,25 @@ class Layer_Dense:
         # Gradients on values
         self.dinputs = np.dot(dvalues, self.weights.T)
 
+    def get_parameters(self):
+        return self.weights.copy(), self.biases.copy()
+
+    def set_parameters(self, weights, biases):
+        self.weights = weights.copy()
+        self.biases = biases.copy()
+
 class Layer_Dropout:
     def __init__(self, rate):
         #invert rate from prop. of neurons to drop to neurons to keep
         self.rate = 1 - rate
         
     def forward(self, inputs, training):
+        self.inputs = inputs
         #If not training, don't dropout
         if not training:
             self.output = inputs.copy()
             return
         # Save input values
-        self.inputs = inputs
         # Generate and save scaled mask
         self.binary_mask = np.random.binomial(1, self.rate, size=inputs.shape) / self.rate
         # Apply mask to output values
@@ -180,9 +187,6 @@ class Layer_Input:
         self.output = inputs
         
 class Activation_ReLU:
-    # Don't use please
-    def predictions(self, outputs):
-        return outputs
     
     def forward(self, inputs, training):
         # Remember input values
@@ -194,7 +198,10 @@ class Activation_ReLU:
         self.dinputs = dvalues.copy()
         # Zero gradient where inpuut values were negative
         self.dinputs[self.inputs <= 0] = 0
-
+        # Don't use please
+    def predictions(self, outputs):
+        return outputs
+    
 class Activation_Softmax:
     def predictions(self, outputs):
         return np.argmax(outputs, axis=1)
@@ -214,7 +221,7 @@ class Activation_Softmax:
             jacobian_matrix = np.diagflat(single_output) - np.dot(single_output, single_output.T)
             self.dinputs[index] = np.dot(jacobian_matrix, single_dvalues)
 
-class Activation_Softmax_Loss_CategoricalCrossentropy:
+class Activation_Softmax_Loss_CategoricalCrossentropy():
     def backward(self, dvalues, y_true):
         samples = len(dvalues)
         # if one-hot encoded, turn into discrete
@@ -409,7 +416,6 @@ class Loss:
     def calculate(self, output, y, *, include_regularization=False):
         sample_losses = self.forward(output, y)
         data_loss = np.mean(sample_losses)
-
         self.accumulated_sum += np.sum(sample_losses)
         self.accumulated_count += len(sample_losses)
 
@@ -566,11 +572,14 @@ class Model:
     def add(self, layer):
         self.layers.append(layer)
         
-    def set(self, *, loss, optimizer, accuracy):
+    def set(self, *, loss=None, optimizer=None, accuracy=None):
         # * signifies keyword args
-        self.loss = loss
-        self.optimizer = optimizer
-        self.accuracy = accuracy
+        if loss is not None:
+            self.loss = loss
+        if optimizer is not None:
+            self.optimizer = optimizer
+        if accuracy is not None:
+            self.accuracy = accuracy
 
     def finalize(self):
         self.input_layer = Layer_Input()
@@ -593,8 +602,9 @@ class Model:
 
             if hasattr(self.layers[i], "weights"):
                 self.trainable_layers.append(self.layers[i])
-            
-        self.loss.remember_trainable_layers(self.trainable_layers)
+                
+        if self.loss is not None:
+              self.loss.remember_trainable_layers(self.trainable_layers)
         # If output activation is Softmax and
         # loss function is Categorical Cross-Entropy
         # create an object of combined activation
@@ -640,8 +650,10 @@ class Model:
         self.accuracy.init(y)
         train_steps = 1
 
-        if validation_data is not None:
-            self.evaluate(*validation_data, batch_size=batch_size)
+        if batch_size is not None:
+            train_steps = len(X) // batch_size
+            if train_steps * batch_size < len(X):
+                train_steps += 1
         
         #Making epochs start on 1, lol
         for epoch in range(1, epochs+1):
@@ -704,7 +716,7 @@ class Model:
 
         self.loss.new_pass()
         self.accuracy.new_pass()
-
+        
         for step in range(validation_steps):
             if batch_size is None:
                 batch_X = X_val
@@ -717,12 +729,47 @@ class Model:
             self.loss.calculate(output, batch_y)
             predictions = self.output_layer_activation.predictions(output)
             self.accuracy.calculate(predictions, batch_y)
-
+            
         validation_loss = self.loss.calculate_accumulated()
         validation_accuracy = self.accuracy.calculate_accumulated()
+        print(self.loss.accumulated_sum, self.loss.accumulated_count)
+        print(self.accuracy.accumulated_sum, self.accuracy.accumulated_count)
         print(f'validation, ' +
                 f'acc: {validation_accuracy:.3f}, ' +
                 f'loss: {validation_loss:.3f}')
+        
+    def predict(self, X, *, batch_size=None):
+        prediction_steps = 1
+        
+        if batch_size is not None:
+            prediction_steps = len(X) // batch_size
+            if prediction_steps * batch_size < len(X):
+                prediction_steps += 1
+                
+        output = []
+        for step in range(prediction_steps):
+            if batch_size is None:
+                batch_X = X
+            # Otherwise slice a batch
+            else:
+                batch_X = X[step*batch_size:(step+1)*batch_size]
+              # Perform the forward pass
+            batch_output = self.forward(batch_X, training=False)
+            # Append batch prediction to the list of predictions
+            output.append(batch_output)
+        return np.vstack(output)
+        
+    def get_parameters(self):
+        parameters = []
+        for layer in self.trainable_layers:
+            parameters.append(layer.get_parameters())
+            return parameters
+        
+    def set_parameters(self, parameters):
+        # Iterate over the parameters and layers
+        # and update each layers with each set of the parameters
+        for parameter_set, layer in zip(parameters, self.trainable_layers):
+            layer.set_parameters(*parameter_set)
                 
 #--{End Library}--#
 '''
@@ -786,11 +833,55 @@ model.add(Activation_Softmax())
 
 model.set(loss=Loss_CategoricalCrossentropy(), optimizer=Optimizer_Adam(decay=1e-3), accuracy=Accuracy_Categorical())
 model.finalize()
-start_time = time.perf_counter()
-model.train(X, y, validation_data=(X_test, y_test), epochs=40, batch_size=128, print_every=100)
-print(time.perf_counter() - start_time)
 
+model.train(X, y, validation_data=(X_test, y_test), epochs=10, batch_size=128, print_every=100)
+model.evaluate(X_test, y_test)
+parameters = model.get_parameters()
+model.set_parameters(parameters)
+# New model
+# Instantiate the model
+model1 = Model()
+# Add layers
+model1.add(Layer_Dense(X.shape[1], 128))
+model1.add(Activation_ReLU())
+model1.add(Layer_Dense(128, 128))
+model1.add(Activation_ReLU())
+model1.add(Layer_Dense(128, 10))
+model1.add(Activation_Softmax())
+# Set loss and accuracy objects
+# We do not set optimizer object this time - there's no need to do it
+# as we won't train the model
+model1.set(loss=Loss_CategoricalCrossentropy(), accuracy=Accuracy_Categorical())
+# Finalize the model
+model1.finalize()
 
+model2 = Model()
+model2.add(Layer_Dense(X.shape[1], 128))
+model2.add(Activation_ReLU())
+model2.add(Layer_Dense(128, 128))
+model2.add(Activation_ReLU())
+model2.add(Layer_Dense(128, 10))
+model2.add(Activation_Softmax())
+model2.set(loss=Loss_CategoricalCrossentropy(), accuracy=Accuracy_Categorical())
+model2.finalize()
+model3 = Model()
+model3.add(Layer_Dense(X.shape[1], 128))
+model3.add(Activation_ReLU())
+model3.add(Layer_Dense(128, 128))
+model3.add(Activation_ReLU())
+model3.add(Layer_Dense(128, 10))
+model3.add(Activation_Softmax())
+model3.set(loss=Loss_CategoricalCrossentropy(), accuracy=Accuracy_Categorical())
+model3.finalize()
+# Set model with parameters instead of training it
+model1.set_parameters(parameters)
+model2.set_parameters(parameters)
+model3.set_parameters(parameters)
+# Evaluate the model
+model1.evaluate(X_test, y_test)
+model2.evaluate(X_test, y_test)
+model3.evaluate(X_test, y_test)
+print(model.predict(X_test))
 
 
 
