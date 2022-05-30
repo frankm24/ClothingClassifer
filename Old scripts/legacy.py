@@ -170,7 +170,7 @@ class Network:
                             for neuron_index, activation in enumerate(layer):
                                 #change in Cost / change in activation
                                 d_C_aL = 2 * (activation - y_values[neuron_index])  
-                                d_C_aL = np.sum( for i in layers[layer_index+1])
+                                #d_C_aL = np.sum( for i in layers[layer_index+1])
                                 #ReLU just filters out negatives, so
                                 #change in activation / change in original brightness = 1
                                 #unless activation is 0

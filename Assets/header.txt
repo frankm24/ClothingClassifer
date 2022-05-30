@@ -1,0 +1,1 @@
+Draw one of the following items of clothing: T-shirt/top, Trousers, Pullover (Sweater), Dress, Coat, Sandal, Shirt, Sneaker, Bag, or ankle boot. Then, press the "Evaluate Drawing" button, and a machine learning model will guess what you drew.

@@ -9,8 +9,10 @@ import os
 from zipfile import ZipFile
 import cv2 #Real code now
 import time
+import copy
+import pickle
 
-nnfs.init()
+#nnfs.init()
 
 '''
 Dumb Ideas:
@@ -113,6 +115,18 @@ Calculate loss + accuracy on the single minibatch as well as the full batch (ful
 
 Note on syntax: * seperates args from kwargs
 
+META NOTES:
+The magnitude of a training step must be proportional to loss. Anything else would theoretically be a
+step away from the global minimum. Why is learning rate decay and parameter regularization anything more than a method of
+compensation for a bad loss function?
+
+Why should the total loss of a batch be divided by the count of samples in a batch?
+
+Humans seem to learn to memorize data the way a neural net is trained to fit data in order to mathematically represent complex
+patterns. People do not seem to learn patterns in this way. Rather, they seem to have the capacity to understand patterns in a
+much faster, more calculatable way, at a subconcious level. Wait this is so confusing because there's concious vs subconcious,
+memorizing versus pattern recognition. This is a much deeper problem which I must explore. The result could be a better loss
+function. 
 '''
 # Makes coding easier to consider inputs as a layer with a forward method 
 # which just outputs the input values
@@ -155,11 +169,11 @@ class Layer_Dense:
         self.dinputs = np.dot(dvalues, self.weights.T)
 
     def get_parameters(self):
-        return self.weights.copy(), self.biases.copy()
+        return self.weights, self.biases
 
     def set_parameters(self, weights, biases):
-        self.weights = weights.copy()
-        self.biases = biases.copy()
+        self.weights = weights
+        self.biases = biases
 
 class Layer_Dropout:
     def __init__(self, rate):
@@ -732,8 +746,6 @@ class Model:
             
         validation_loss = self.loss.calculate_accumulated()
         validation_accuracy = self.accuracy.calculate_accumulated()
-        print(self.loss.accumulated_sum, self.loss.accumulated_count)
-        print(self.accuracy.accumulated_sum, self.accuracy.accumulated_count)
         print(f'validation, ' +
                 f'acc: {validation_accuracy:.3f}, ' +
                 f'loss: {validation_loss:.3f}')
@@ -763,13 +775,57 @@ class Model:
         parameters = []
         for layer in self.trainable_layers:
             parameters.append(layer.get_parameters())
-            return parameters
+        return parameters
         
     def set_parameters(self, parameters):
         # Iterate over the parameters and layers
         # and update each layers with each set of the parameters
         for parameter_set, layer in zip(parameters, self.trainable_layers):
             layer.set_parameters(*parameter_set)
+
+    def save_parameters(self, path):
+        with open(path, 'wb') as f:
+            pickle.dump(self.get_parameters(), f)
+
+    def load_parameters(self, path):
+        with open(path, 'rb') as f:
+            self.set_parameters(pickle.load(f))
+
+    def save(self, path):
+        model = copy.deepcopy(self)
+        model.loss.new_pass()
+        model.accuracy.new_pass()
+        model.input_layer.__dict__.pop('output', None)
+        model.loss.__dict__.pop('dinputs', None)
+        
+        for layer in model.layers:
+            for property in ['inputs', 'output', 'dinputs', 'dweights', 'dbiases']:
+                layer.__dict__.pop(property, None)
+
+        with open(path, 'wb') as f:
+            pickle.dump(model, f)
+
+    @staticmethod
+    def load(path):
+        with open(path, 'rb') as f:
+            model = pickle.load(f)
+        return model
+
+    def predict(self, X, *, batch_size=None):
+        prediction_steps = 1
+        if batch_size is not None:
+            prediction_steps = len(X) // batch_size
+            if prediction_steps * batch_size < len(x):
+                prediction_steps += 1
+        output = []
+        for i in range(prediction_steps):
+            if batch_size is None:
+                batch_X = X
+            else:
+                batch_X = X[step*batch_size:(step+1)*batch_size]
+            batch_output = self.forward(batch_X, training=False)
+            output.append(batch_output)
+        return np.vstack(output)
                 
 #--{End Library}--#
 '''
@@ -812,80 +868,65 @@ def create_data_mnist(path):
       # And return all the data
       return X, y, X_test, y_test
 
-X, y, X_test, y_test = create_data_mnist("fashion_mnist_images")
+# ONLY RUN IF NOT IMPORTED!!!!
+def main():
+    print("Running numpynet.py main function")
+    
+    X, y, X_test, y_test = create_data_mnist("fashion_mnist_images")
 
-keys = np.array(range(X.shape[0]))
-np.random.shuffle(keys)
+    keys = np.array(range(X.shape[0]))
+    np.random.shuffle(keys)
 
-X = X[keys]
-y = y[keys]
+    X = X[keys]
+    y = y[keys]
 
-X = (X.reshape(X.shape[0], -1).astype(np.float32) - 127.5) / 127.5
-X_test = (X_test.reshape(X_test.shape[0], -1).astype(np.float32) - 127.5) / 127.5
+    X = (X.reshape(X.shape[0], -1).astype(np.float32) - 127.5) / 127.5
+    X_test = (X_test.reshape(X_test.shape[0], -1).astype(np.float32) - 127.5) / 127.5
 
-model = Model()
-model.add(Layer_Dense(X.shape[1], 128))
-model.add(Activation_ReLU())
-model.add(Layer_Dense(128, 128))
-model.add(Activation_ReLU())
-model.add(Layer_Dense(128, 10))
-model.add(Activation_Softmax())
+    fashion_mnist_labels = {
+          0: 'T-shirt/top',
+          1: 'Trouser',
+          2: 'Pullover',
+          3: 'Dress',
+          4: 'Coat',
+          5: 'Sandal',
+          6: 'Shirt',
+          7: 'Sneaker',
+          8: 'Bag',
+          9: 'Ankle boot'
+      }
+    
+    #model = Model.load("test.model")
+    model = Model()
+    model.add(Layer_Dense(X.shape[1], 128))
+    model.add(Activation_ReLU())
+    model.add(Layer_Dense(128, 128))
+    model.add(Activation_ReLU())
+    model.add(Layer_Dense(128, 10))
+    model.add(Activation_Softmax())
 
-model.set(loss=Loss_CategoricalCrossentropy(), optimizer=Optimizer_Adam(decay=1e-3), accuracy=Accuracy_Categorical())
-model.finalize()
+    model.set(loss=Loss_CategoricalCrossentropy(), optimizer=Optimizer_Adam(learning_rate=0.005, decay=1e-8), accuracy=Accuracy_Categorical())
+    model.finalize()
+    model.train(X, y, validation_data=(X_test, y_test), epochs=10, batch_size=128, print_every=100)
+    model.save("giga_train.model")
+    '''
+    image_data = cv2.imread('pants.png', cv2.IMREAD_GRAYSCALE)
+    plt.imshow(image_data, cmap='gray')
+    plt.show()
+    image_data = cv2.resize(image_data, (28, 28))
+    image_data = 255 - image_data
+    plt.imshow(image_data, cmap='gray')
+    plt.show()
+    image_data = (image_data.reshape(1, -1).astype(np.float32) - 127.5) / 127.5
 
-model.train(X, y, validation_data=(X_test, y_test), epochs=10, batch_size=128, print_every=100)
-model.evaluate(X_test, y_test)
-parameters = model.get_parameters()
-model.set_parameters(parameters)
-# New model
-# Instantiate the model
-model1 = Model()
-# Add layers
-model1.add(Layer_Dense(X.shape[1], 128))
-model1.add(Activation_ReLU())
-model1.add(Layer_Dense(128, 128))
-model1.add(Activation_ReLU())
-model1.add(Layer_Dense(128, 10))
-model1.add(Activation_Softmax())
-# Set loss and accuracy objects
-# We do not set optimizer object this time - there's no need to do it
-# as we won't train the model
-model1.set(loss=Loss_CategoricalCrossentropy(), accuracy=Accuracy_Categorical())
-# Finalize the model
-model1.finalize()
+    confidences = model.predict(image_data)
+    predictions = model.output_layer_activation.predictions(confidences)
 
-model2 = Model()
-model2.add(Layer_Dense(X.shape[1], 128))
-model2.add(Activation_ReLU())
-model2.add(Layer_Dense(128, 128))
-model2.add(Activation_ReLU())
-model2.add(Layer_Dense(128, 10))
-model2.add(Activation_Softmax())
-model2.set(loss=Loss_CategoricalCrossentropy(), accuracy=Accuracy_Categorical())
-model2.finalize()
-model3 = Model()
-model3.add(Layer_Dense(X.shape[1], 128))
-model3.add(Activation_ReLU())
-model3.add(Layer_Dense(128, 128))
-model3.add(Activation_ReLU())
-model3.add(Layer_Dense(128, 10))
-model3.add(Activation_Softmax())
-model3.set(loss=Loss_CategoricalCrossentropy(), accuracy=Accuracy_Categorical())
-model3.finalize()
-# Set model with parameters instead of training it
-model1.set_parameters(parameters)
-model2.set_parameters(parameters)
-model3.set_parameters(parameters)
-# Evaluate the model
-model1.evaluate(X_test, y_test)
-model2.evaluate(X_test, y_test)
-model3.evaluate(X_test, y_test)
-print(model.predict(X_test))
+    for prediction in predictions:
+        print(fashion_mnist_labels[prediction])
+    '''
 
 
-
-
-
-
-
+    
+if __name__ == "__main__":
+    main()
