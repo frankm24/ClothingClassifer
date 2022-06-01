@@ -317,43 +317,53 @@ class NNEvaluator():
             self.canvas_obj = canvas_obj
             self.prediction_viewer = prediction_viewer
             self.model = model
-            
+        
         def run(self):
             self.canvas_obj.isBusy = True
+            # Img proc
             pixmap_save = self.canvas_obj.pixmap().copy()
-            
             q_image = self.canvas_obj.pixmap().toImage()
+            
+            
             image = QImageToCvMat(q_image)
-            
             grayscale_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-            #plt.imshow(grayscale_image, cmap='gray')
-            #plt.show()
-            
-            grayscale_qimg = CvMatToQImage(grayscale_image, grayscale=True)
-            self.canvas_obj.setPixmap(QtGui.QPixmap(grayscale_qimg))
-            time.sleep(2)
-            
             resized_image = cv2.resize(grayscale_image, (28, 28))
-            resized_qimg = CvMatToQImage(resized_image, grayscale=True)
-            self.canvas_obj.setPixmap(QtGui.QPixmap(resized_qimg).scaled(self.canvas_obj.width(),
-                                                                         self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
-            time.sleep(2)
             inverted_image = 255 - resized_image
-            inverted_qimg = CvMatToQImage(inverted_image, grayscale=True)
-            self.canvas_obj.setPixmap(QtGui.QPixmap(inverted_qimg).scaled(self.canvas_obj.width(),
-                                                                         self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
-            time.sleep(2)
-            image_data = (inverted_image.reshape(1, -1).astype(np.float32) - 127.5) / 127.5
+            # https://stackoverflow.com/questions/19363293/whats-the-fastest-way-to-increase-color-image-contrast-with-opencv-in-python-c
+            # https://stackoverflow.com/questions/48406578/adjusting-contrast-of-image-purely-with-numpy
+            min_val = np.min(inverted_image)
+            max_val = np.max(inverted_image)
+            LUT = np.zeros(256,dtype=np.uint8)
+            LUT[min_val:max_val+1]=np.linspace(start=0,stop=255,num=(max_val-min_val)+1,endpoint=True,dtype=np.uint8)
+            brightened_image = LUT[inverted_image]
+            image_data = (brightened_image.reshape(1, -1).astype(np.float32) - 127.5) / 127.5
             confidences = self.model.predict(image_data)
             predictions = self.model.output_layer_activation.predictions(confidences)
             prediction = fashion_mnist_labels[predictions[0]]
-
+            
+            grayscale_qimg = CvMatToQImage(grayscale_image, grayscale=True)
+            resized_qimg = CvMatToQImage(resized_image, grayscale=True)
+            inverted_qimg = CvMatToQImage(inverted_image, grayscale=True)
+            brightened_qimg = CvMatToQImage(brightened_image, grayscale=True)
+            
+            self.canvas_obj.setPixmap(QtGui.QPixmap(grayscale_qimg))
+            time.sleep(1)
+            
+            
+            self.canvas_obj.setPixmap(QtGui.QPixmap(resized_qimg).scaled(self.canvas_obj.width(),
+                                                                         self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
+            time.sleep(1)
+            self.canvas_obj.setPixmap(QtGui.QPixmap(inverted_qimg).scaled(self.canvas_obj.width(),
+                                                                         self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
+            time.sleep(1)
+            self.canvas_obj.setPixmap(QtGui.QPixmap(brightened_qimg).scaled(self.canvas_obj.width(),
+                                                                         self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
+            time.sleep(1)
             self.prediction_viewer.prediction.setText(prediction)
             for i in range(10):
                 label = self.prediction_viewer.grid.itemAtPosition(i, 1).widget()
                 label.setText(f'{confidences[0][i]:.2%}')
             print(f"NNEvaluator: Computed forward pass. prediction={prediction}")
-            
             self.canvas_obj.setPixmap(pixmap_save)
             self.canvas_obj.isBusy = False
             self.finished.emit()
