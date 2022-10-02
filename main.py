@@ -347,18 +347,18 @@ class NNEvaluator():
             brightened_qimg = CvMatToQImage(brightened_image, grayscale=True)
             
             self.canvas_obj.setPixmap(QtGui.QPixmap(grayscale_qimg))
-            time.sleep(1)
+            time.sleep(2)
             
             
             self.canvas_obj.setPixmap(QtGui.QPixmap(resized_qimg).scaled(self.canvas_obj.width(),
                                                                          self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
-            time.sleep(1)
+            time.sleep(2)
             self.canvas_obj.setPixmap(QtGui.QPixmap(inverted_qimg).scaled(self.canvas_obj.width(),
                                                                          self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
-            time.sleep(1)
+            time.sleep(2)
             self.canvas_obj.setPixmap(QtGui.QPixmap(brightened_qimg).scaled(self.canvas_obj.width(),
                                                                          self.canvas_obj.height(), QtCore.Qt.KeepAspectRatio))
-            time.sleep(1)
+            time.sleep(2)
             self.prediction_viewer.prediction.setText(prediction)
             for i in range(10):
                 label = self.prediction_viewer.grid.itemAtPosition(i, 1).widget()
@@ -422,7 +422,7 @@ class PredictionViewer(QtWidgets.QWidget):
             value.setText("00.00%")
             self.grid.addWidget(label, r, 0)
             self.grid.addWidget(value, r, 1)
-    
+
 #class BrushSizeWidget(
 
 # https://www.youtube.com/watch?v=g_wlZ9IhbTs

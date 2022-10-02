@@ -897,6 +897,7 @@ def main():
       }
     
     #model = Model.load("test.model")
+    '''
     model = Model()
     model.add(Layer_Dense(X.shape[1], 128))
     model.add(Activation_ReLU())
@@ -908,7 +909,23 @@ def main():
     model.set(loss=Loss_CategoricalCrossentropy(), optimizer=Optimizer_Adam(learning_rate=0.005, decay=1e-8), accuracy=Accuracy_Categorical())
     model.finalize()
     model.train(X, y, validation_data=(X_test, y_test), epochs=10, batch_size=128, print_every=100)
-    model.save("giga_train.model")
+    '''
+    autoencoder = Model()
+    autoencoder.add(Layer_Dense(784, 128))
+    autoencoder.add(Activation_ReLU())
+    autoencoder.add(Layer_Dense(128, 32))
+    autoencoder.add(Activation_ReLU())
+    autoencoder.add(Layer_Dense(32, 128))
+    autoencoder.add(Activation_ReLU())
+    autoencoder.add(Layer_Dense(128, 784))
+    autoencoder.add(Activation_Linear())
+    autoencoder.set(loss=Loss_MeanSquaredError(), optimizer=Optimizer_Adam(learning_rate=0.005, decay=1e-8), accuracy=Accuracy_Regression())
+    autoencoder.finalize()
+    autoencoder.train(X, X, validation_data=(X_test, X_test), epochs=10, batch_size=128, print_every=100)
+    pred = autoencoder.predict(X_test[0])
+    plt.imshow(X_test[0].reshape(28, 28), cmap='gray')
+    plt.imshow(pred.reshape(28, 28), cmap='gray')
+    plt.show()
     '''
     image_data = cv2.imread('pants.png', cv2.IMREAD_GRAYSCALE)
     plt.imshow(image_data, cmap='gray')
